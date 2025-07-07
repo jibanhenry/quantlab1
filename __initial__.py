@@ -31,7 +31,7 @@ def full_refresh_and_predict(
     4) 筛出高置信度，返回 (df_daily, df_pred, df_high)
     """
     # 1) 更新日线
-    #update_data(output_file=daily_csv)
+    update_data(output_file=daily_csv)
 
     # 2) 读取整月日线
     df_daily = pd.read_csv(daily_csv, parse_dates=["日期"])
@@ -114,6 +114,7 @@ def main():
         records.append(rec)
 
     df_out = pd.DataFrame(records)
+    df_out = df_out.sort_values("event_date", ascending=False).reset_index(drop=True)
     print("\n高置信度窗口及其前7天+事件日概率：")
     print(df_out.to_string(index=False))
 
