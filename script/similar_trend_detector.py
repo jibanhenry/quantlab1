@@ -494,6 +494,27 @@ class SingleTargetViewer:
         self._line_to_mid: Dict[plt.Line2D, int] = {}
         self.active_mid: Optional[int] = None
 
+        # ---------------- 关键新增：颜色一致性分配 ----------------
+        res_df_for_color = self.item["res"].copy()
+        if self.limit_to_topk is not None:
+            res_df_for_color = res_df_for_color.head(self.limit_to_topk)
+
+        # 使用 Matplotlib 的默认调色板；若缺失则给一个兜底列表
+        palette = plt.rcParams.get("axes.prop_cycle", None)
+        palette = (palette.by_key().get("color", []) if palette else [])
+        if not palette:
+            palette = ["#1f77b4","#ff7f0e","#2ca02c","#d62728",
+                       "#9467bd","#8c564b","#e377c2","#7f7f7f",
+                       "#bcbd22","#17becf"]
+
+        # 目标序列保留第一种颜色
+        self._color_target = palette[0]
+        self._color_for_mid: Dict[int, str] = {}
+        for i, (_, row) in enumerate(res_df_for_color.iterrows()):
+            mid = int(row["internal_id"])
+            self._color_for_mid[mid] = palette[(i + 1) % len(palette)]
+        # -------------------------------------------------------
+
         self._draw_overlay()
         self._draw_target_candles()
         self.fig.canvas.mpl_connect("pick_event", self._on_pick)
@@ -509,18 +530,30 @@ class SingleTargetViewer:
         tgt = self.item["bundle"]["target"]
         y = tgt["rel_close_vec"]
         L = len(y); x = np.arange(L)
-        (line_target,) = self.ax_overlay.plot(x, y, linewidth=2.8, linestyle='-', label=f"Target {self.item['target_code']}")
+
+        # 目标窗口（实线）使用专属颜色
+        (line_target,) = self.ax_overlay.plot(
+            x, y, linewidth=2.8, linestyle='-',
+            color=self._color_target,
+            label=f"Target {self.item['target_code']}"
+        )
         line_target.set_zorder(5)
 
-        # Target future (dotted, always shown) + bridge
+        # 目标未来（点线）+ 桥接，颜色一致
         fut = tgt.get("fut_rel_close", None)
         if fut is not None and len(fut) > 0:
             xf = np.arange(L, L + len(fut))
-            self.ax_overlay.plot(xf, fut, linewidth=2.0, linestyle=':', alpha=0.95, zorder=4, label="Target future")
-            # bridge
-            self._bridge(self.ax_overlay, L-1, y[-1], L, fut[0], linewidth=1.6, linestyle=":", alpha=0.95)
+            self.ax_overlay.plot(
+                xf, fut, linewidth=2.0, linestyle=':',
+                color=self._color_target, alpha=0.95, zorder=4,
+                label="Target future"
+            )
+            self._bridge(
+                self.ax_overlay, L-1, y[-1], L, fut[0],
+                linewidth=1.6, linestyle=":", color=self._color_target, alpha=0.95
+            )
 
-        # Matches (dashed) + their future (dotted), all always shown + bridge
+        # 匹配（虚线）+ 其未来（点线）均使用为该匹配分配的固定颜色
         res_df = self.item["res"]
         if self.limit_to_topk is not None:
             res_df = res_df.head(self.limit_to_topk)
@@ -532,24 +565,45 @@ class SingleTargetViewer:
             yy = payload["rel_close"]
             if len(yy) != len(y):
                 continue
-            # dashed window (clickable)
-            line, = self.ax_overlay.plot(x, yy, linestyle='--', linewidth=1.1, alpha=0.9, label=f"{row['code']}")
+            color = self._color_for_mid.get(mid, "#7f7f7f")
+
+            # 窗口（可点击选择）
+            line, = self.ax_overlay.plot(
+                x, yy, linestyle='--', linewidth=1.3, alpha=0.95,
+                color=color, label=f"{row['code']}"
+            )
             line.set_picker(True)
             line.set_pickradius(8)
             self._line_to_mid[line] = mid
 
-            # dotted future + bridge
+            # 未来 + 桥接，颜色一致
             fut_m = payload.get("fut_rel_close", [])
             if fut_m is not None and len(fut_m) > 0:
                 xf = np.arange(L, L + len(fut_m))
-                self.ax_overlay.plot(xf, fut_m, linewidth=1.2, alpha=0.85, linestyle=':')
-                self._bridge(self.ax_overlay, L-1, yy[-1], L, fut_m[0], linewidth=1.2, linestyle=':', alpha=0.85)
+                self.ax_overlay.plot(
+                    xf, fut_m, linewidth=1.2, alpha=0.9,
+                    linestyle=':', color=color
+                )
+                self._bridge(
+                    self.ax_overlay, L-1, yy[-1], L, fut_m[0],
+                    linewidth=1.2, linestyle=':', color=color, alpha=0.9
+                )
 
         self.ax_overlay.set_title(f"Overlay — {self.item['target_code']} (click a dashed line to show its candles)")
         self.ax_overlay.set_xlabel("Index within window")
         self.ax_overlay.set_ylabel("Relative close (norm)")
         self.ax_overlay.grid(True, alpha=0.3)
-        self.ax_overlay.legend(loc="upper left", fontsize=9, ncol=2)
+
+        # 图例去重
+        handles, labels = self.ax_overlay.get_legend_handles_labels()
+        seen = {}
+        dedup_handles, dedup_labels = [], []
+        for h, lb in zip(handles, labels):
+            if lb not in seen:
+                seen[lb] = True
+                dedup_handles.append(h)
+                dedup_labels.append(lb)
+        self.ax_overlay.legend(dedup_handles, dedup_labels, loc="upper left", fontsize=9, ncol=2)
 
     def _draw_target_candles(self):
         self.ax_k_target.clear()
@@ -568,7 +622,7 @@ class SingleTargetViewer:
             fo, fh, fl, fc = _build_ohlc_from_rel(
                 tgt["fut_rel_open"], tgt["fut_rel_high"], tgt["fut_rel_low"], tgt["fut_rel_close"]
             )
-            # 为了和窗口排成一条时间轴，把 future 的 x 序列接在 L ... L+F-1
+            # 与窗口连在一条时间轴：future 的 x 从 L 开始
             x_offset = L
             for i in range(len(fc)):
                 up = fc[i] >= fo[i]
@@ -587,7 +641,7 @@ class SingleTargetViewer:
         self.ax_k_target.set_title(f"Target candles: window + future  [future {fd}/{fh} trading days]")
         self.ax_k_target.grid(True, alpha=0.3)
 
-        # Right panel content depends on selection
+        # 右下角：根据选择绘制匹配蜡烛图
         if self.active_mid is not None:
             self._draw_match_candles(self.active_mid)
         else:
@@ -639,7 +693,7 @@ class SingleTargetViewer:
         artist = event.artist
         if artist in self._line_to_mid:
             self.active_mid = self._line_to_mid[artist]
-            # Only update the bottom panels; overlay stays the same
+            # 仅更新下方两块；上方 overlay 保持不变
             self._draw_target_candles()
             self.fig.canvas.draw_idle()
 
@@ -670,8 +724,12 @@ if __name__ == "__main__":
     feat_by_code = build_features(df_all)
 
     TARGETS = [
-        ("002598", "2025-08-15"),
-        ("600255", "2025-08-18")
+        ("002141", "2025-08-20"),
+        ("002823", "2025-08-20"),
+        ("600590", "2025-08-20"),
+        ("600218", "2025-08-20"),
+        ("600503", "2025-08-20"),
+        ("605303", "2025-08-20")
     ]
     window_len = 7
     future_horizon = 5
@@ -691,12 +749,12 @@ if __name__ == "__main__":
         metric=metric
     )
 
-    # Print each target's table
+    # 打印每个目标的结果表
     for item in results:
         print(f"\n=== Target {item['target_code']} ===")
         print(item["res"])
 
-    # One window per target (independent, interactive)
+    # 为每个目标单独展示一个交互窗口
     for item in results:
         viewer = SingleTargetViewer(item, limit_to_topk=top_k_each)
         viewer.show()
