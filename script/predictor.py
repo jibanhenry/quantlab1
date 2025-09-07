@@ -220,7 +220,7 @@ def main():
                    default="/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/output/2025_06_daily.csv",
                    help="原始日线 CSV 路径")
     p.add_argument("--model",
-                   default="/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/model/xgb_20250809.joblib",
+                   default="/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/model/xgb_20250831.joblib",
                    help="已训练模型文件路径 (.joblib)")
     p.add_argument("--thresh", default=0.85, type=float,
                    help="筛选高置信度的阈值（y_prob >= thresh）")

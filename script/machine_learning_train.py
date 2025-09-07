@@ -474,8 +474,8 @@ def main():
     ap.add_argument("--sgd_epochs",     type=int, default=3)
 
     # 评估时间窗（仍然参与训练）
-    ap.add_argument("--val_start", type=str, default="2025-02-01")
-    ap.add_argument("--val_end",   type=str, default="2025-08-05")
+    ap.add_argument("--val_start", type=str, default="2025-03-01")
+    ap.add_argument("--val_end",   type=str, default="2025-08-30")
     # 评估增强：主阈值与导出明细
     ap.add_argument("--dec_thr", type=float, default=0.5, help="主判定阈值，用于计算precision/recall/f1和y_pred导出")
     ap.add_argument("--val_pred_out", type=str, default=None, help="验证窗预测明细CSV（含y_prob/y_pred），留空则不导出")

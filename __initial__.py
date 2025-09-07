@@ -146,7 +146,7 @@ def main():
                    default="/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/output/2025_06_daily.csv",
                    help="本地存储的当月日线 CSV 路径")
     p.add_argument("--model",
-                   default="/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/model/xgb_20250809.joblib",
+                   default="/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/model/xgb_20250831.joblib",
                    help=".joblib 格式的训练好模型文件")
     p.add_argument("--threshold", type=float, default=0.85,
                    help="筛选高置信度阈值（y_prob >= threshold）")
