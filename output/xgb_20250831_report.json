@@ -1,0 +1,48 @@
+{
+  "trainer": "xgb",
+  "model_path": "/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/model/xgb_20250831.joblib",
+  "rows": {
+    "total": 6801098,
+    "train_used": 6801098,
+    "val_period_rows": 641431
+  },
+  "window_days": 7,
+  "horizon_days": 5,
+  "threshold": 0.3,
+  "decision_threshold": 0.5,
+  "validation_window": {
+    "start": "2025-03-01",
+    "end": "2025-08-30"
+  },
+  "metrics_on_validation_window": {
+    "roc_auc": 0.8620746429979876,
+    "average_precision": 0.08395675096829357,
+    "threshold": 0.5,
+    "f1": 0.03591190973563753,
+    "precision": 0.01838935536657993,
+    "recall": 0.7618782995276465,
+    "tn": 491466,
+    "fp": 146366,
+    "fn": 857,
+    "tp": 2742
+  },
+  "threshold_scan": {
+    "strategy": "best_f1",
+    "target": 0.2,
+    "scan_min": 0.0,
+    "scan_max": 1.0,
+    "scan_step": 0.01,
+    "recommended": {
+      "recommended_threshold": 0.84,
+      "precision": 0.14285714285714285,
+      "recall": 0.17365934981939427,
+      "f1": 0.15675946827188358,
+      "tp": 625,
+      "fp": 3750,
+      "tn": 634082,
+      "fn": 2974,
+      "pred_pos": 4375
+    },
+    "scan_out_csv": "/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/output/xgb_20250831_threshold_scan.csv"
+  }
+}

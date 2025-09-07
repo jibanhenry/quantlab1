@@ -1,0 +1,125 @@
+{
+  "B1": {
+    "index_gate": {
+      "adx_trend_th": 25,
+      "adx_range_th": 20,
+      "bw_low_quantile": 0.3
+    },
+    "stock_state": {
+      "adx_trend_th": 25,
+      "adx_range_th": 22
+    },
+    "S1": {
+      "ema_fast": 20,
+      "ema_mid": 50,
+      "ema_slow": 200,
+      "atr_mul": 1.67,
+      "atr_mul_pullback": 0.7,
+      "rsi_bull_low": 48,
+      "obv_confirm": true,
+      "obv_lookback": 20
+    },
+    "S2": {
+      "boll_n": 20,
+      "boll_k": 2.0,
+      "bw_quantile": 0.31,
+      "bw_quantile_window": 120,
+      "atr_stop_mul": 0.87,
+      "obv_confirm": true
+    },
+    "S3": {
+      "rsi_buy": 28,
+      "atr_n": 1.0,
+      "atr_stop_mul": 1.42
+    },
+    "S4": {
+      "cci_th": 100
+    },
+    "risk": {
+      "per_trade_risk_pct": 0.005,
+      "max_pos_per_stock": 0.2
+    }
+  },
+  "B2": {
+    "index_gate": {
+      "adx_trend_th": 25,
+      "adx_range_th": 20,
+      "bw_low_quantile": 0.3
+    },
+    "stock_state": {
+      "adx_trend_th": 28,
+      "adx_range_th": 18
+    },
+    "S1": {
+      "ema_fast": 20,
+      "ema_mid": 50,
+      "ema_slow": 200,
+      "atr_mul": 1.7,
+      "atr_mul_pullback": 0.86,
+      "rsi_bull_low": 50,
+      "obv_confirm": true,
+      "obv_lookback": 20
+    },
+    "S2": {
+      "boll_n": 20,
+      "boll_k": 2.0,
+      "bw_quantile": 0.32,
+      "bw_quantile_window": 120,
+      "atr_stop_mul": 1.07,
+      "obv_confirm": true
+    },
+    "S3": {
+      "rsi_buy": 30,
+      "atr_n": 1.0,
+      "atr_stop_mul": 1.37
+    },
+    "S4": {
+      "cci_th": 100
+    },
+    "risk": {
+      "per_trade_risk_pct": 0.005,
+      "max_pos_per_stock": 0.2
+    }
+  },
+  "B3": {
+    "index_gate": {
+      "adx_trend_th": 25,
+      "adx_range_th": 20,
+      "bw_low_quantile": 0.3
+    },
+    "stock_state": {
+      "adx_trend_th": 28,
+      "adx_range_th": 18
+    },
+    "S1": {
+      "ema_fast": 20,
+      "ema_mid": 50,
+      "ema_slow": 200,
+      "atr_mul": 2.17,
+      "atr_mul_pullback": 0.79,
+      "rsi_bull_low": 40,
+      "obv_confirm": true,
+      "obv_lookback": 20
+    },
+    "S2": {
+      "boll_n": 20,
+      "boll_k": 2.0,
+      "bw_quantile": 0.3,
+      "bw_quantile_window": 120,
+      "atr_stop_mul": 1.09,
+      "obv_confirm": true
+    },
+    "S3": {
+      "rsi_buy": 28,
+      "atr_n": 1.0,
+      "atr_stop_mul": 1.18
+    },
+    "S4": {
+      "cci_th": 100
+    },
+    "risk": {
+      "per_trade_risk_pct": 0.005,
+      "max_pos_per_stock": 0.2
+    }
+  }
+}
