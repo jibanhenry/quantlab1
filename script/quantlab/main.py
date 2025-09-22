@@ -34,7 +34,7 @@ def main():
     ap.add_argument("--step_months", type=int, default=3)
     ap.add_argument("--trials", type=int, default=50)
     # selective saves
-    ap.add_argument("--save_signals", type=int, choices=[0,1], default=1)
+    ap.add_argument("--save_signals", type=int, choices=[0,1], default=0)
     ap.add_argument("--save_trades", type=int, choices=[0,1], default=1)
     ap.add_argument("--save_summary", type=int, choices=[0,1], default=1)
     ap.add_argument("--save_candidates", type=int, choices=[0,1], default=1)
