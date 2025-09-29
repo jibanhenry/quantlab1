@@ -38,6 +38,8 @@ def main():
     ap.add_argument("--save_trades", type=int, choices=[0,1], default=1)
     ap.add_argument("--save_summary", type=int, choices=[0,1], default=1)
     ap.add_argument("--save_candidates", type=int, choices=[0,1], default=1)
+    ap.add_argument("--export_virtual_trades", type=int, choices=[0, 1], default=1,
+                    help="是否生成 all_signals_trades.csv（默认 1）")
     args = ap.parse_args()
 
     csvs = _parse_csvs(args.csv)
@@ -66,11 +68,15 @@ def main():
         import datetime as _dt
         ym = _dt.datetime.today().strftime("%Y%m")
         bucket_map_csv = os.path.join(args.outdir, f"bucket_map_{ym}.csv")
-        daily_run(csvs, cfg_path=args.cfg, outdir=args.outdir, bucket_map_csv=bucket_map_csv,
+        daily_run(csvs,
+                  cfg_path=args.cfg,
+                  outdir=args.outdir,
+                  bucket_map_csv=bucket_map_csv,
                   save_signals=bool(args.save_signals),
                   save_trades=bool(args.save_trades),
                   save_summary=bool(args.save_summary),
-                  save_candidates=bool(args.save_candidates))
+                  save_candidates=bool(args.save_candidates),
+                  export_virtual_trades=bool(args.export_virtual_trades))  # <<< 传入
 
 if __name__ == "__main__":
     main()

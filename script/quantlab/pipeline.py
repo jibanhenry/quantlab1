@@ -55,7 +55,8 @@ def daily_run(all_csvs: List[str],
               save_signals: bool=True,
               save_trades: bool=True,
               save_summary: bool=True,
-              save_candidates: bool=True):
+              save_candidates: bool=True,
+              export_virtual_trades: bool=True):
     cfg = load_config(cfg_path)
     print("[1/5] 读取多个CSV并合并去重...")
     df_all = load_market_csv_multi(all_csvs)
@@ -100,6 +101,43 @@ def daily_run(all_csvs: List[str],
         trades = trades.merge(pred_ledger, on=['code','date'], how='left')
     except Exception as _e:
         print(f"[ML] prediction step skipped (trades ledger): {_e}")
+
+        # ========= 导出全量“候选即开仓”的虚拟交易 =========
+    if export_virtual_trades:
+        try:
+            from .backtest import all_signals_virtual_trades
+            all_sig_trades = all_signals_virtual_trades(indicator_dict, idx_state, cfg, cost_bp=2.0)
+            if all_sig_trades is not None and not all_sig_trades.empty:
+                os.makedirs(outdir, exist_ok=True)
+                out_csv = os.path.join(outdir, "all_signals_trades.csv")
+
+                # ==== 合并 ML 预测（基于信号发生日 signal_date） ====
+                from .model import predict_for_code_date
+                if 'code' not in all_sig_trades.columns and 'symbol' in all_sig_trades.columns:
+                    all_sig_trades['code'] = all_sig_trades['symbol'].astype(str)
+                all_sig_trades['signal_date'] = pd.to_datetime(all_sig_trades['signal_date'], errors='coerce')
+                df_ind['date'] = pd.to_datetime(df_ind['date'], errors='coerce')
+
+                key_df = (all_sig_trades[['code', 'signal_date']]
+                          .dropna()
+                          .drop_duplicates()
+                          .rename(columns={'signal_date': 'date'}))
+                if not key_df.empty:
+                    preds = predict_for_code_date(df_ind, key_df)
+                    preds = preds.rename(columns={'date': 'signal_date'})
+                    all_sig_trades = all_sig_trades.merge(preds, on=['code', 'signal_date'], how='left')
+                else:
+                    print("[virtual][warn] no (code, signal_date) keys for prediction merge.")
+
+                # ==== 写出 ====
+                all_sig_trades.to_csv(out_csv, index=False, encoding="utf-8-sig")
+                print(f"[virtual] exported all_signals_trades: {out_csv}  rows={len(all_sig_trades)}")
+            else:
+                print("[virtual] no virtual trades generated.")
+        except Exception as e:
+            print(f"[virtual] export failed: {e}")
+    else:
+        print("[virtual] skipped by flag (--export_virtual_trades=0)")
 
     save_outputs(signals, trades, summary, cands, outdir,
                  save_signals=save_signals,
