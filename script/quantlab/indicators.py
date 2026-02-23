@@ -330,3 +330,16 @@ def bollinger_bw_quantile(series: pd.Series, n: int = 20, k: float = 2.0, q_wind
     bw = bollinger_bandwidth(series, n=n, k=k)
     bw_q = rolling_percentile_rank(bw, window=q_window)
     return bw, bw_q
+
+def vol_change_rate(volume):
+    return volume.pct_change()
+
+def vol_ratio_short_long(volume, short=5, long=20):
+    return volume.rolling(short).mean() / volume.rolling(long).mean()
+
+def vol_slope(volume, window=5):
+    import numpy as np
+    return volume.rolling(window).apply(
+        lambda x: np.polyfit(range(len(x)), x, 1)[0],
+        raw=False
+    )

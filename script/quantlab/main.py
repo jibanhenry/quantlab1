@@ -19,7 +19,7 @@ def _parse_csvs(arg: str) -> List[str]:
 
 def main():
     ap = argparse.ArgumentParser(description="quantlab runner (daily / monthly / quarterly)")
-    ap.add_argument("--mode", choices=["daily","monthly","quarterly"], default="daily")
+    ap.add_argument("--mode", choices=["daily","monthly","quarterly"], default="quarterly")
     ap.add_argument(
         "--csv",
         default="/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/output/2020-2025_all.csv,/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/output/2025_06_daily.csv",
