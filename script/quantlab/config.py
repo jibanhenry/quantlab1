@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import yaml, os
+from typing import Optional
 
 DEFAULT_CONFIG = {
     'index_gate': {
@@ -40,6 +41,39 @@ DEFAULT_CONFIG = {
     'risk': {
         'per_trade_risk_pct': 0.005,
         'max_pos_per_stock': 0.2,
+    },
+    'valuation': {
+        'enabled': False,
+        'mode': 'rank_only',
+        'expensive_cut': 0.8,
+        'pb_weight': 0.5,
+        'ps_weight': 0.5,
+        'tech_weight': 0.7,
+        'value_weight': 0.3,
+        'ml_weight': 0.0,
+        'rolling_window': 120,
+    },
+    'portfolio': {
+        'top_n': 3,
+        'strategy_profile': 'blended',
+        'min_score': 55.0,
+        'min_hold_days': 7,
+        'max_hold_days': 20,
+        'exit_rank_mult': 4.0,
+        'turnover_buffer': 6.0,
+        'min_total_exposure': 0.15,
+        'base_total_exposure': 0.45,
+        'max_total_exposure': 0.70,
+        'min_position_weight': 0.10,
+        'max_position_weight': 0.35,
+        'trend_weight': 0.24,
+        'momentum_weight': 0.16,
+        'signal_weight': 0.14,
+        'medium_term_weight': 0.20,
+        'quality_weight': 0.12,
+        'value_weight': 0.08,
+        'risk_weight': 0.04,
+        'liquidity_weight': 0.02,
     }
 }
 
@@ -54,6 +88,22 @@ def load_config(path=None):
         out[k] = v.copy() if isinstance(v, dict) else v
     for k,v in cfg.items():
         if isinstance(v, dict) and k in out and isinstance(out[k], dict):
+            merged = out[k].copy()
+            merged.update(v)
+            out[k] = merged
+        else:
+            out[k] = v
+    return out
+
+
+def merge_config(base: dict, overrides: Optional[dict] = None) -> dict:
+    if not overrides:
+        return base
+    out = {}
+    for k, v in base.items():
+        out[k] = v.copy() if isinstance(v, dict) else v
+    for k, v in overrides.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
             merged = out[k].copy()
             merged.update(v)
             out[k] = merged

@@ -26,6 +26,7 @@ from .io_utils import load_market_csv_multi
 from . import model as model_mod
 from .model import train_regressor, save_model, DEFAULT_FEATURES
 from .signals import compute_indicators
+from .valuation import add_valuation_features
 
 
 # ============== 增强点：把 market_state_* & s*_pos 纳入训练特征 ==============
@@ -81,7 +82,11 @@ def _build_training_frame(ledger_csv: str, csvs: List[str], cfg_path: Optional[s
 
     df_all = load_market_csv_multi(csvs)
     cfg = load_config(cfg_path)  # cfg_path 可为 None
-    ind = compute_indicators(df_all, cfg)
+    ind_parts = []
+    for _, sub in df_all.groupby("code"):
+        ind_parts.append(compute_indicators(sub.sort_values("date").reset_index(drop=True), cfg))
+    ind = pd.concat(ind_parts, ignore_index=True) if ind_parts else pd.DataFrame()
+    ind = add_valuation_features(ind, cfg)
 
     keys = ['code', 'date']
     feat_cols = [c for c in ind.columns if c not in ('date', 'code')]

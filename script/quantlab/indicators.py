@@ -56,7 +56,7 @@ def cci(df: pd.DataFrame, n: int = 20) -> pd.Series:
     return (tp - ma) / (0.015 * md)
 
 def roc(series: pd.Series, r: int = 10) -> pd.Series:
-    return series.pct_change(r)
+    return series.pct_change(r, fill_method=None)
 
 def kdj(df: pd.DataFrame, n: int = 9, m1: int = 3, m2: int = 3) -> Tuple[pd.Series, pd.Series, pd.Series]:
     low_min = df['low'].rolling(n, min_periods=n).min()

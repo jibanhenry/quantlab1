@@ -4,11 +4,12 @@ import pandas as pd
 from typing import Dict, Optional, List
 from tqdm.auto import tqdm
 
-from .config import load_config
+from .config import load_config, merge_config
 from .io_utils import load_market_csv_multi, save_outputs
 from .signals import compute_indicators
 from .market_state import build_index_state_from_panel
-from .backtest import backtest_simple
+from .backtest import backtest_simple, apply_valuation_overlay
+from .valuation import add_valuation_features, summarize_valuation_quality
 
 def _group_to_dict(df_ind: pd.DataFrame) -> Dict[str, pd.DataFrame]:
     res: Dict[str, pd.DataFrame] = {}
@@ -24,7 +25,7 @@ def _compute_indicators_with_progress(df_all: pd.DataFrame, cfg: dict) -> pd.Dat
         ind = compute_indicators(sub, cfg)
         out.append(ind)
     df_ind = pd.concat(out, axis=0, ignore_index=True)
-    return df_ind
+    return add_valuation_features(df_ind, cfg)
 
 def _ensure_keys(df: pd.DataFrame) -> pd.DataFrame:
     """确保存在 ['code','date'] 两列，类型正确。"""
@@ -50,6 +51,7 @@ def _ensure_keys(df: pd.DataFrame) -> pd.DataFrame:
 
 def daily_run(all_csvs: List[str],
               cfg_path: Optional[str]=None,
+              cfg_overrides: Optional[dict]=None,
               outdir: str="./output",
               bucket_map_csv: Optional[str]=None,
               save_signals: bool=True,
@@ -57,12 +59,16 @@ def daily_run(all_csvs: List[str],
               save_summary: bool=True,
               save_candidates: bool=True,
               export_virtual_trades: bool=True):
-    cfg = load_config(cfg_path)
+    cfg = merge_config(load_config(cfg_path), cfg_overrides)
     print("[1/5] 读取多个CSV并合并去重...")
     df_all = load_market_csv_multi(all_csvs)
 
     print("[2/5] 计算技术指标（按股票进度展示）...")
     df_ind = _compute_indicators_with_progress(df_all, cfg)
+    val_quality = summarize_valuation_quality(df_ind)
+    if not val_quality.empty:
+        print("[valuation] 字段质量摘要：")
+        print(val_quality.to_string(index=False))
 
     if bucket_map_csv and os.path.exists(bucket_map_csv):
         try:
@@ -90,8 +96,10 @@ def daily_run(all_csvs: List[str],
         cands_features = cands.merge(df_ind, on=['code','date'], how='left', suffixes=('', '_ind'))
         # 喂给模型
         cands = add_predictions_to_candidates(cands_features)
+        cands = apply_valuation_overlay(cands, cfg)
     except Exception as _ml_e:
         print(f"[ML] prediction step skipped (candidates): {_ml_e}")
+        cands = apply_valuation_overlay(cands, cfg)
 
     # ========= 修复点 2：给账本 trades 也追加 ML 预测 =========
     try:

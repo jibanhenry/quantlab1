@@ -1,36 +1,96 @@
 # QuantLab
 
-A modular research & backtesting framework for quantitative trading strategies.
+A modular research and execution framework for A-share quantitative trading.
 
-一个用于量化交易策略的模块化研究与回测框架。
+当前主线已经从单纯规则信号回测，升级为：
+
+- `Top 3` 组合约束
+- 不强制满仓
+- 长持有波段风格
+- 按窗口风格在不同策略之间切换
+- 日常输出 `BUY / HOLD / SELL` 建议
 
 ---
 
-## 📂 Project Structure | 项目结构
+## Current Strategy
 
-```
+当前日常实盘主线，不是“每天选新的 Top 3 全替换”，而是：
+
+- 最多持有 `3` 只
+- 可以只持有 `1` 只或 `2` 只
+- 没有足够好的新机会时不补满
+- 已有持仓优先 `HOLD`
+- 只有出现空位或真实退出时才新增 `BUY`
+
+当前主要使用的策略池有三条：
+
+- `pullback_longhold`
+- `pullback_quality_combo`
+- `quality_trend_longhold`
+
+实际日常使用时，主要以这两个为主：
+
+- `pullback_longhold`
+- `pullback_quality_combo`
+
+---
+
+## Regime Mapping
+
+根据滚动窗口稳定性分析，目前的经验映射是：
+
+- `pullback_regime` -> `pullback_longhold`
+- `weak_range_regime` -> `pullback_quality_combo`
+- `mixed_transition` -> 默认 `pullback_longhold`，激进时可参考 `pullback_quality_combo`
+
+可以简单理解为：
+
+- 趋势还在、但更像回踩轮动：用 `pullback_longhold`
+- 弱势、区间、风格混合：用 `pullback_quality_combo`
+- 很强的连续主升环境：`quality_trend_longhold` 可作为二级备选，但不是当前主线
+
+---
+
+## Expected Level
+
+截至目前这批滚动回测，能得到的大致结论是：
+
+- 最好的单窗，`pullback_longhold` 单笔 `expectancy` 可到约 `2%`
+- 更密的滚动窗口下，最近阶段 `pullback_quality_combo` 在部分窗口更强
+- 最新实盘风格更像：
+  - 总仓位常见在 `30% - 60%`
+  - 单票常见在 `15% - 26%`
+  - 平均持有大约 `10 - 15` 天
+
+这套系统已经到了“可以做日常辅助决策”的阶段，但还不应视为已经锁定稳定 alpha。
+
+---
+
+## Project Structure
+
+```text
 quantlab/
 ├── __init__.py
-├── config.py          # Config loading/merging/validation | 配置加载/合并/校验
-├── io_utils.py        # IO utils for CSV/Parquet | CSV/Parquet 读写工具
-├── indicators.py      # Technical indicators (EMA/MACD/RSI...) | 技术指标
-├── signals.py         # S1/S2/S3/S4 strategies | 策略信号
-├── market_state.py    # Market climate recognition | 市场气候识别
-├── buckets.py         # Buckets (size/vol/industry) | 分桶映射
-├── backtest.py        # Backtest engine | 回测引擎
-├── risk.py            # Risk and position sizing | 风控与仓位管理
-├── tuning.py          # Walk-forward tuning | 滚动调参
-├── bandit.py          # Contextual bandit allocation | 多臂老虎机分配
-├── reporting.py       # Reports & visualization | 报告与可视化
-├── pipeline.py        # End-to-end orchestration | 全流程编排
-└── main.py            # CLI entrypoint | 命令行入口
+├── config.py
+├── io_utils.py
+├── indicators.py
+├── signals.py
+├── market_state.py
+├── buckets.py
+├── backtest.py
+├── risk.py
+├── tuning.py
+├── pipeline.py
+├── valuation.py
+├── portfolio.py
+└── main.py
 ```
 
 ---
 
-## ⚙️ Installation | 安装
+## Installation
 
-Requires **Python 3.9+**. | 需要 **Python 3.9+**。
+Requires Python `3.9+`.
 
 ```bash
 pip install -r requirements.txt
@@ -38,10 +98,9 @@ pip install -r requirements.txt
 
 ---
 
-## 🗂 Data | 数据格式
+## Data
 
-Input CSV must contain these columns:  
-输入的 CSV 必须包含以下列：
+输入 CSV 至少应包含这些列：
 
 | 中文列名 | 内部字段 |
 |----------|----------|
@@ -61,95 +120,112 @@ Input CSV must contain these columns:
 
 ---
 
-## 🚀 Usage | 使用方法
+## CLI Modes
 
-### CLI
+- `daily`：旧版规则信号与回测
+- `monthly`：分桶更新
+- `quarterly`：旧版滚动调参与回测
+- `portfolio_daily`：综合因子 Top-N 组合回测
+- `portfolio_quarterly`：组合样本外回测
+- `portfolio_regime_analysis`：窗口风格稳定性分析
+- `portfolio_regime_daily`：日常 regime 判断与操作建议
+
+---
+
+## Daily Usage
+
+日常使用时，一般只需要先更新数据，再运行 `portfolio_regime_daily`。
 
 ```bash
-python -m quantlab.main --mode daily --csv data/all.csv --outdir output
+./.venv/bin/python -m script.quantlab.main \
+  --mode portfolio_regime_daily \
+  --csv "/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/output/2020-2025_all.csv,/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/output/2025_06_daily.csv" \
+  --outdir "/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/output/quantlab_regime_daily_latest" \
+  --cfg "/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/output/tuned_config_quarterly_20260225.json" \
+  --regime_lookback_months 3 \
+  --action_recent_days 10
 ```
 
-### Modes | 模式
+如果想看指定时间段的操作历史：
 
-- `daily` → Run signals & backtest | 日常运行，输出信号和回测  
-- `monthly` → Re-map buckets | 月度更新分桶  
-- `quarterly` → Walk-forward tuning | 季度滚动调参  
-
----
-
-## 📝 CLI Arguments | 命令行参数
-
-| 参数 | 说明 |
-|------|------|
-| `--mode` | 运行模式：`daily` / `monthly` / `quarterly` |
-| `--csv` | 输入行情 CSV 文件（多个用逗号分隔） |
-| `--outdir` | 输出目录 |
-| `--cfg` | 外部 YAML 配置文件 |
-| `--bucket_mode` | 分桶方式：`size` / `vol` |
-| `--train_months` | 训练窗口（月） |
-| `--val_months` | 验证窗口（月） |
-| `--step_months` | 滚动步长（月） |
-| `--trials` | 搜索次数（Optuna） |
-| `--save_signals` | 保存 signals_daily.csv (1/0) |
-| `--save_trades` | 保存 trades_ledger.csv (1/0) |
-| `--save_summary` | 保存 strategy_summary.csv (1/0) |
-| `--save_candidates` | 保存 candidates_xxx.csv (1/0) |
+```bash
+./.venv/bin/python -m script.quantlab.main \
+  --mode portfolio_regime_daily \
+  --csv "/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/output/2020-2025_all.csv,/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/output/2025_06_daily.csv" \
+  --outdir "/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/output/quantlab_regime_daily_latest" \
+  --cfg "/Users/wuguanhe/Desktop/吴冠鹤/业余/stock/system project/pythonProject/output/tuned_config_quarterly_20260225.json" \
+  --regime_lookback_months 3 \
+  --action_start 2026-01-13 \
+  --action_end 2026-03-25
+```
 
 ---
 
-## 📊 Strategies | 策略
+## Daily Outputs
 
-### S1 — Trend-follow Pullback | 趋势回撤买入
-- Entry: EMA50>EMA200 & ADX≥25, 回撤至EMA20, MACD>0, RSI≥45, OBV确认  
-- Exit: 跌破EMA50或MACD死叉  
-- Stop: 1.5–2× ATR
+日常最重要的是下面这些文件：
 
-### S2 — Bollinger Breakout | 布林突破
-- Entry: 布林收缩 + 突破上轨 + ADX上升 + OBV确认  
-- Exit: 回落至中轨下  
-- Stop: 中轨 − ATR
+- `portfolio_daily_regime.csv`
+  - 今天属于什么窗口风格
+  - 当前应使用哪条策略
+- `portfolio_positions_state.csv`
+  - 当前实际持仓状态
+- `portfolio_latest_candidates.csv`
+  - 今天横截面最强候选
+- `portfolio_orders_next_open.csv`
+  - 历史真实下单记录
+- `portfolio_daily_actions.csv`
+  - 系统原始动作输出
+- `portfolio_action_history.csv`
+  - 最近若干天历史动作
 
-### S3 — Mean Reversion | 区间均值回归
-- Entry: ADX<20，价格接近下轨 + RSI≤35  
-- Exit: 反弹至中轨  
-- Stop: 1.2× ATR
+为了更贴近实盘，本仓库当前还额外生成两张“渐进持仓版”文件：
 
-### S4 — Trend Momentum Pyramid | 趋势加仓
-- Entry: +DI > −DI, ADX上升, CCI>100 或 ROC>0, OBV创新高  
-- Exit: 加仓策略，无单独退出条件  
-
----
-
-## 🧪 Typical Workflow | 工作流
-
-1. **Quarterly 调参**  
-   ```bash
-   python -m quantlab.main --mode quarterly --csv data/all.csv        --train_months 48 --val_months 6 --step_months 3 --trials 30
-   ```
-
-2. **Monthly 分桶冻结**  
-   ```bash
-   python -m quantlab.main --mode monthly --csv data/all.csv --bucket_mode size
-   ```
-
-3. **Daily 日常运行**  
-   ```bash
-   python -m quantlab.main --mode daily --csv data/all.csv
-   ```
+- `portfolio_daily_actions_progressive.csv`
+  - 优先 `HOLD`
+  - 只有有空位时才 `BUY`
+  - 不做“每天 Top 3 整组替换”
+- `portfolio_action_history_progressive.csv`
+  - 默认最近 `10` 天动作
+  - `SELL` 行带 `pnl_pct`
 
 ---
 
-## 📈 Outputs | 输出
+## Daily Reading Order
 
-- `signals_daily.csv` → 每日信号  
-- `trades_ledger.csv` → 交易流水  
-- `strategy_summary.csv` → 策略汇总表现  
-- `candidates_YYYYMMDD.csv` → 当日候选股票  
+每天建议按这个顺序看：
+
+1. `portfolio_daily_regime.csv`
+2. `portfolio_daily_actions_progressive.csv`
+3. `portfolio_positions_state.csv`
+4. `portfolio_action_history_progressive.csv`
+
+实际操作原则：
+
+- 如果今天只有 `HOLD`，就不动
+- 如果持仓未满 `3` 只，才考虑新的 `BUY`
+- 如果出现 `SELL`，先看收益率和退出原因
+- 不因为“今日候选 Top 3 改了”就把现有 3 只全部换掉
 
 ---
 
-## 📌 Notes | 注意事项
+## Research Workflow
 
-- 本项目用于研究，不构成投资建议。  
-- 确保输入数据质量（连续无缺失）。  
-- 建议使用 quarterly 模式优化参数，提升适应性。  
+如果要继续研究，而不是日常执行，推荐这样做：
+
+1. `portfolio_regime_analysis`
+   - 找不同窗口类型对应的优势策略
+2. `portfolio_quarterly`
+   - 做滚动样本外评估
+3. 必要时再做季度级策略复核
+
+这类研究模式不需要每天跑。
+
+---
+
+## Notes
+
+- 本项目用于研究，不构成投资建议。
+- 数据必须先更新，daily 输出才有意义。
+- 当前更适合“每天跑 daily，季度再复核策略”，而不是每天调参。
+- `pbMRQ` 和 `psTTM` 已接入估值特征层，但不是唯一主因子。

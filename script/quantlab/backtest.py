@@ -18,7 +18,179 @@ class Position:
     initial_stop: float
     reason: str
     confidence: float  # <<< 新增：进场当日的置信度
+    value_score: float = np.nan
+    pb_cs_rank: float = np.nan
+    ps_cs_rank: float = np.nan
     holding: bool = True
+
+
+def _valuation_cfg(cfg: dict) -> dict:
+    return cfg.get("valuation", {}) if isinstance(cfg, dict) else {}
+
+
+def _safe_float(value, default=np.nan) -> float:
+    try:
+        return float(value)
+    except Exception:
+        return float(default)
+
+
+def _technical_score(row: pd.Series) -> float:
+    score = 0.0
+    adx_val = row.get('adx14', np.nan)
+    if pd.notna(adx_val):
+        score += min(100.0, max(0.0, float(adx_val)))
+    if row.get('s2_entry', 0) == 1:
+        score += 20.0
+    if row.get('s1_entry', 0) == 1:
+        score += 10.0
+    if row.get('s3_long_entry', 0) == 1:
+        score += 8.0
+    return float(min(100.0, score / 2.0))
+
+
+def _value_score(row: pd.Series) -> float:
+    score = row.get("value_score", np.nan)
+    if pd.notna(score):
+        return float(np.clip(score, 0.0, 1.0) * 100.0)
+    ranks = [row.get("pb_cs_rank", np.nan), row.get("ps_cs_rank", np.nan)]
+    valid = [1.0 - float(v) for v in ranks if pd.notna(v)]
+    if not valid:
+        return np.nan
+    return float(np.mean(valid) * 100.0)
+
+
+def _ml_score(row: pd.Series) -> float:
+    pred = row.get("predicted_return", np.nan)
+    if pd.notna(pred):
+        return float(np.clip(float(pred), -0.2, 0.2) * 250.0 + 50.0)
+    pred_bin = row.get("predicted_bin_rel", np.nan)
+    if pd.notna(pred_bin):
+        return float(np.clip((float(pred_bin) - 1.0) / 4.0, 0.0, 1.0) * 100.0)
+    return np.nan
+
+
+def score_candidates(cands: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    if cands is None or cands.empty:
+        return cands
+
+    out = cands.copy()
+    def _col(name: str, default=np.nan) -> pd.Series:
+        if name in out.columns:
+            return pd.to_numeric(out[name], errors="coerce")
+        return pd.Series(default, index=out.index, dtype=float)
+
+    val_cfg = _valuation_cfg(cfg)
+    tech_w = float(val_cfg.get("tech_weight", 0.7))
+    value_w = float(val_cfg.get("value_weight", 0.3))
+    ml_w = float(val_cfg.get("ml_weight", 0.0))
+    total_w = tech_w + value_w + ml_w
+    if total_w <= 0:
+        tech_w = 1.0
+        value_w = ml_w = 0.0
+        total_w = 1.0
+    tech_w, value_w, ml_w = tech_w / total_w, value_w / total_w, ml_w / total_w
+
+    adx = _col("adx14")
+    s2 = _col("s2_entry", 0.0).fillna(0.0)
+    s1 = _col("s1_entry", 0.0).fillna(0.0)
+    s3 = _col("s3_long_entry", 0.0).fillna(0.0)
+    out["technical_score"] = np.minimum(
+        100.0,
+        (
+            adx.clip(lower=0.0, upper=100.0).fillna(0.0)
+            + s2 * 20.0
+            + s1 * 10.0
+            + s3 * 8.0
+        ) / 2.0,
+    )
+
+    value_base = _col("value_score")
+    pb_rank = _col("pb_cs_rank")
+    ps_rank = _col("ps_cs_rank")
+    fallback_sum = (1.0 - pb_rank).where(pb_rank.notna(), 0.0) + (1.0 - ps_rank).where(ps_rank.notna(), 0.0)
+    fallback_count = pb_rank.notna().astype(float) + ps_rank.notna().astype(float)
+    fallback_value = (fallback_sum / fallback_count.replace(0.0, np.nan)) * 100.0
+    out["value_score_100"] = np.where(
+        value_base.notna(),
+        value_base.clip(lower=0.0, upper=1.0) * 100.0,
+        fallback_value,
+    )
+
+    pred = _col("predicted_return")
+    pred_bin = _col("predicted_bin_rel")
+    out["ml_score"] = np.where(
+        pred.notna(),
+        pred.clip(lower=-0.2, upper=0.2) * 250.0 + 50.0,
+        np.where(
+            pred_bin.notna(),
+            ((pred_bin - 1.0) / 4.0).clip(lower=0.0, upper=1.0) * 100.0,
+            np.nan,
+        ),
+    )
+
+    weighted_sum = pd.Series(0.0, index=out.index, dtype=float)
+    active_weight = pd.Series(0.0, index=out.index, dtype=float)
+    for col, weight in (("technical_score", tech_w), ("value_score_100", value_w), ("ml_score", ml_w)):
+        if weight <= 0:
+            continue
+        vals = pd.to_numeric(out[col], errors="coerce")
+        weighted_sum = weighted_sum + vals.fillna(0.0) * weight
+        active_weight = active_weight + vals.notna().astype(float) * weight
+    out["candidate_score"] = weighted_sum / active_weight.replace(0.0, np.nan)
+    return out
+
+
+def apply_valuation_overlay(cands: pd.DataFrame, cfg: dict) -> pd.DataFrame:
+    if cands is None or cands.empty:
+        return cands
+
+    out = score_candidates(cands, cfg)
+    val_cfg = _valuation_cfg(cfg)
+    if not bool(val_cfg.get("enabled", False)):
+        return out.sort_values(["confidence", "candidate_score"], ascending=[False, False]).reset_index(drop=True)
+
+    mode = str(val_cfg.get("mode", "rank_only"))
+    expensive_cut = float(val_cfg.get("expensive_cut", 0.8))
+
+    if mode == "soft_filter":
+        pb_ok = out["pb_cs_rank"].isna() | (out["pb_cs_rank"] <= expensive_cut)
+        ps_ok = out["ps_cs_rank"].isna() | (out["ps_cs_rank"] <= expensive_cut)
+        out = out[pb_ok & ps_ok].copy()
+
+    return out.sort_values(["candidate_score", "confidence"], ascending=[False, False]).reset_index(drop=True)
+
+
+def _entry_allowed_by_value(row: pd.Series, cfg: dict) -> bool:
+    val_cfg = _valuation_cfg(cfg)
+    if not bool(val_cfg.get("enabled", False)):
+        return True
+    if str(val_cfg.get("mode", "rank_only")) != "soft_filter":
+        return True
+    expensive_cut = float(val_cfg.get("expensive_cut", 0.8))
+    pb_rank = row.get("pb_cs_rank", np.nan)
+    ps_rank = row.get("ps_cs_rank", np.nan)
+    pb_ok = pd.isna(pb_rank) or float(pb_rank) <= expensive_cut
+    ps_ok = pd.isna(ps_rank) or float(ps_rank) <= expensive_cut
+    return bool(pb_ok and ps_ok)
+
+
+def _valuation_note(row: pd.Series, cfg: dict) -> str:
+    pb_rank = row.get("pb_cs_rank", np.nan)
+    ps_rank = row.get("ps_cs_rank", np.nan)
+    value_score = row.get("value_score", np.nan)
+    parts = []
+    if pd.notna(pb_rank):
+        parts.append(f"pb_rank={float(pb_rank):.2f}")
+    if pd.notna(ps_rank):
+        parts.append(f"ps_rank={float(ps_rank):.2f}")
+    if pd.notna(value_score):
+        parts.append(f"value_score={float(value_score):.2f}")
+    if not parts:
+        return "valuation=na"
+    if _entry_allowed_by_value(row, cfg):
+        return "valuation_ok|" + ",".join(parts)
+    return "valuation_blocked|" + ",".join(parts)
 
 
 def backtest_simple(data: Dict[str, pd.DataFrame],
@@ -37,18 +209,7 @@ def backtest_simple(data: Dict[str, pd.DataFrame],
 
     # --- 置信度函数：放在函数顶部，便于建仓时调用 ---
     def to_confidence(row: pd.Series) -> int:
-        score = 0
-        # 趋势强度：adx14；做边界保护
-        adx_val = row.get('adx14', np.nan)
-        if pd.notna(adx_val):
-            score += int(min(100, max(0, float(adx_val))))
-        # 策略加分：S2突破 +20；S1回撤 +10
-        if row.get('s2_entry', 0) == 1:
-            score += 20
-        if row.get('s1_entry', 0) == 1:
-            score += 10
-        # 缩放并截断到 [0,100]
-        return int(min(100, score / 2))
+        return int(_technical_score(row))
 
     signals_all = []
     trades = []
@@ -99,6 +260,7 @@ def backtest_simple(data: Dict[str, pd.DataFrame],
                     pnl_pct = (exit_price - pos.entry_price) / pos.entry_price - (2 * cost_bp / 10000.0)
                     trades.append({
                         "symbol": symbol,
+                        "code": str(symbol),
                         "strategy": pos.strategy,
                         "entry_date": pos.entry_date,
                         "entry_price": pos.entry_price,
@@ -110,14 +272,19 @@ def backtest_simple(data: Dict[str, pd.DataFrame],
                         "initial_stop": float(pos.initial_stop),
                         "stop_on_exit": float(stop),
                         "confidence": float(pos.confidence),  # <<< 写入进场置信度
+                        "value_score": float(pos.value_score),
+                        "pb_cs_rank": float(pos.pb_cs_rank),
+                        "ps_cs_rank": float(pos.ps_cs_rank),
+                        "valuation_note": _valuation_note(today, cfg),
                     })
                     pos.holding = False
                     pos = None
 
             # --- 无持仓：寻找入场 ---
             if (pos is None) and (today['market_state_index'] in ['trend_ok', 'neutral'] or today['market_state_stock'] == 'range'):
+                value_ok = _entry_allowed_by_value(today, cfg)
                 # 优先级：S2 > S1 > S3
-                if today['s2_entry'] == 1:
+                if value_ok and today['s2_entry'] == 1:
                     entry_price = tomorrow['open']
                     stop = today['s2_stop']
                     pos = Position(
@@ -130,8 +297,11 @@ def backtest_simple(data: Dict[str, pd.DataFrame],
                         initial_stop=float(stop),
                         reason=str(today['s2_reason']),
                         confidence=to_confidence(today),
+                        value_score=_safe_float(today.get("value_score")),
+                        pb_cs_rank=_safe_float(today.get("pb_cs_rank")),
+                        ps_cs_rank=_safe_float(today.get("ps_cs_rank")),
                     )
-                elif (today['s1_entry'] == 1) and (today['market_state_stock'] == 'trend'):
+                elif value_ok and (today['s1_entry'] == 1) and (today['market_state_stock'] == 'trend'):
                     entry_price = tomorrow['open']
                     stop = today['s1_stop']
                     pos = Position(
@@ -144,8 +314,11 @@ def backtest_simple(data: Dict[str, pd.DataFrame],
                         initial_stop=float(stop),
                         reason=str(today['s1_reason']),
                         confidence=to_confidence(today),
+                        value_score=_safe_float(today.get("value_score")),
+                        pb_cs_rank=_safe_float(today.get("pb_cs_rank")),
+                        ps_cs_rank=_safe_float(today.get("ps_cs_rank")),
                     )
-                elif (today['market_state_stock'] == 'range') and (today['s3_long_entry'] == 1):
+                elif value_ok and (today['market_state_stock'] == 'range') and (today['s3_long_entry'] == 1):
                     entry_price = tomorrow['open']
                     stop = today['s3_stop']
                     pos = Position(
@@ -158,6 +331,9 @@ def backtest_simple(data: Dict[str, pd.DataFrame],
                         initial_stop=float(stop),
                         reason=str(today['s3_reason']),
                         confidence=to_confidence(today),
+                        value_score=_safe_float(today.get("value_score")),
+                        pb_cs_rank=_safe_float(today.get("pb_cs_rank")),
+                        ps_cs_rank=_safe_float(today.get("ps_cs_rank")),
                     )
 
             # --- 趋势加仓 / 移动止损 ---
@@ -172,6 +348,7 @@ def backtest_simple(data: Dict[str, pd.DataFrame],
             pnl_pct = (exit_price - pos.entry_price) / pos.entry_price - (2 * cost_bp / 10000.0)
             trades.append({
                 "symbol": symbol,
+                "code": str(symbol),
                 "strategy": pos.strategy,
                 "entry_date": pos.entry_date,
                 "entry_price": pos.entry_price,
@@ -183,6 +360,10 @@ def backtest_simple(data: Dict[str, pd.DataFrame],
                 "initial_stop": float(pos.initial_stop),
                 "stop_on_exit": float(pos.stop),
                 "confidence": float(pos.confidence),  # <<< 写入进场置信度
+                "value_score": float(pos.value_score),
+                "pb_cs_rank": float(pos.pb_cs_rank),
+                "ps_cs_rank": float(pos.ps_cs_rank),
+                "valuation_note": _valuation_note(last, cfg),
             })
 
     # === 汇总 ===
@@ -207,6 +388,8 @@ def backtest_simple(data: Dict[str, pd.DataFrame],
         today_cand['key_notes'] = np.where(today_cand['strategy'] == 'S2', today_cand['s2_reason'],
                                     np.where(today_cand['strategy'] == 'S1', today_cand['s1_reason'],
                                              today_cand['s3_reason']))
+        today_cand['valuation_note'] = today_cand.apply(lambda row: _valuation_note(row, cfg), axis=1)
+        today_cand = apply_valuation_overlay(today_cand, cfg)
 
     # 生成交易汇总
     trades_ledger = pd.DataFrame(trades)
@@ -245,15 +428,7 @@ def all_signals_virtual_trades(indicator_dict: Dict[str, pd.DataFrame],
     """
 
     def to_confidence(row: pd.Series) -> int:
-        score = 0
-        adx_val = row.get('adx14', np.nan)
-        if pd.notna(adx_val):
-            score += int(min(100, max(0, float(adx_val))))
-        if row.get('s2_entry', 0) == 1:
-            score += 20
-        if row.get('s1_entry', 0) == 1:
-            score += 10
-        return int(min(100, score / 2))
+        return int(_technical_score(row))
 
     out: List[dict] = []
 
@@ -279,7 +454,7 @@ def all_signals_virtual_trades(indicator_dict: Dict[str, pd.DataFrame],
             # 市场状态门槛（与 backtest_simple 相同）
             idx_ok = (str(today.get('market_state_index', '')) in ALLOW_IDX) or \
                      (str(today.get('market_state_stock', '')) == 'range')
-            if not idx_ok:
+            if not idx_ok or not _entry_allowed_by_value(today, cfg):
                 continue
 
             # 当天可能多个策略命中：每个策略各开一笔（与 ledger 的“只开一笔”不同，这是“候选就开”）
@@ -383,6 +558,9 @@ def all_signals_virtual_trades(indicator_dict: Dict[str, pd.DataFrame],
                     "initial_stop": float(initial_stop) if np.isfinite(initial_stop) else np.nan,
                     "stop_on_exit": float(stop_on_exit) if stop_on_exit is not None else np.nan,
                     "confidence": float(confidence),
+                    "value_score": _safe_float(today.get("value_score")),
+                    "pb_cs_rank": _safe_float(today.get("pb_cs_rank")),
+                    "ps_cs_rank": _safe_float(today.get("ps_cs_rank")),
                 })
 
     return pd.DataFrame(out)

@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 import numpy as np, pandas as pd
-from .indicators import ema, macd, rsi, atr, bollinger, obv, dmi_adx, cci, roc, kdj, williams_r, psar
+from .indicators import (
+    ema, macd, rsi, atr, bollinger, obv, dmi_adx, cci, roc, kdj, williams_r, psar,
+    breakout_strength_atr, close_location_value, dist_to_high, gap_atr, rolling_max_drawdown,
+    rvol, tr_pct, vol_zscore, wick_ratios,
+)
 
 def compute_indicators(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     out = df.copy()
@@ -14,8 +18,19 @@ def compute_indicators(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     out['obv'] = obv(out['close'], out['volume'])
     out['plus_di14'], out['minus_di14'], out['adx14'] = dmi_adx(out, 14)
     out['cci20'] = cci(out, 20); out['roc10'] = roc(out['close'], 10)
+    out['roc20'] = roc(out['close'], 20); out['roc60'] = roc(out['close'], 60)
     K, D, J = kdj(out, 9, 3, 3); out['kdj_k'], out['kdj_d'], out['kdj_j'] = K, D, J
     out['wr14'] = williams_r(out, 14); out['psar'] = psar(out)
+    out['breakout20_atr'] = breakout_strength_atr(out, 20, 14)
+    out['dist_high20'] = dist_to_high(out['close'], 20)
+    out['dist_high60'] = dist_to_high(out['close'], 60)
+    out['rvol20'] = rvol(out['volume'], 20)
+    out['vol_z20'] = vol_zscore(out['volume'], 20)
+    out['mdd60'] = rolling_max_drawdown(out['close'], 60)
+    out['gap_atr14'] = gap_atr(out, 14)
+    out['tr_pct'] = tr_pct(out)
+    out['clv'] = close_location_value(out)
+    out['upper_wick_ratio'], out['lower_wick_ratio'], out['body_ratio'] = wick_ratios(out)
     return out
 
 def judge_stock_state(stock_df: pd.DataFrame, cfg: dict) -> pd.Series:
@@ -119,7 +134,9 @@ def assemble_signals(stock_df: pd.DataFrame, idx_state: pd.DataFrame, cfg: dict)
     out['s4_pyramid'] = np.where(cond_trend_allowed & cond_stock_trend, s4['s4_pyramid'], 0)
     out['s4_reason'] = np.where(out['s4_pyramid']==1, s4['s4_reason'], "")
 
-    ref_cols = ['ema20','ema50','ema200','macd_dif','macd_dea','macd_hist','rsi14','atr14','obv','boll_mid','boll_up','boll_low','boll_bw','plus_di14','minus_di14','psar','close','open','code']
+    ref_cols = ['ema20','ema50','ema200','macd_dif','macd_dea','macd_hist','rsi14','atr14','atr_pct','obv','boll_mid','boll_up','boll_low','boll_bw','plus_di14','minus_di14','cci20','roc10','roc20','roc60','turnover','psar','close','open','code']
+    ref_cols += ['breakout20_atr','dist_high20','dist_high60','rvol20','vol_z20','mdd60','gap_atr14','tr_pct','clv','upper_wick_ratio','lower_wick_ratio','body_ratio']
+    ref_cols += ['pb_mrq','ps_ttm','pb_cs_rank','ps_cs_rank','pb_log','ps_log','pb_rolling_rank','ps_rolling_rank','value_score']
     for c in ref_cols:
         out[c] = df.get(c, np.nan).values if c in df.columns else np.nan
     if 'bucket_id' in df.columns:

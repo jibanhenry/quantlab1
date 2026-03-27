@@ -38,6 +38,7 @@ DEFAULT_THRESH_PATH = os.path.join(os.path.dirname(__file__), "models", "ml_quin
 # ---------------------------------------------------------------------
 DEFAULT_FEATURES: List[str] = [
     "open","close","preclose","volume","amount","turnover","pb_mrq","ps_ttm",
+    "pb_cs_rank","ps_cs_rank","pb_log","ps_log","pb_rolling_rank","ps_rolling_rank","value_score",
     "ema20","ema50","ema200",
     "macd_dif","macd_dea","macd_hist",
     "rsi14","atr14","atr_pct",
