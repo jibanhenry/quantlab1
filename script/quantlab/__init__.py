@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 __all__ = [
     "config","io_utils","indicators","signals","market_state","buckets",
-    "backtest","risk","tuning","bandit","reporting","pipeline","valuation","portfolio","main"
+    "backtest","risk","tuning","bandit","reporting","pipeline","valuation","portfolio",
+    "factor_data","factor_research","weekly_research","weekly_breakout","board_weekly_breakout","mainline_radar","main"
 ]

@@ -696,6 +696,7 @@ def run_portfolio_daily(
     cfg_path: Optional[str] = None,
     cfg_overrides: Optional[dict] = None,
     outdir: str = "./output",
+    save_signal_panel: bool = False,
 ):
     os.makedirs(outdir, exist_ok=True)
     cfg = merge_config(load_config(cfg_path), cfg_overrides)
@@ -705,7 +706,8 @@ def run_portfolio_daily(
     panel = add_multifactor_scores(panel, cfg)
     panel, trades, monitor, equity, orders, latest_candidates, latest_positions = simulate_multifactor_portfolio(panel, cfg)
 
-    panel.to_csv(os.path.join(outdir, "portfolio_signal_panel.csv"), index=False, encoding="utf-8-sig")
+    if save_signal_panel:
+        panel.to_csv(os.path.join(outdir, "portfolio_signal_panel.csv"), index=False, encoding="utf-8-sig")
     trades.to_csv(os.path.join(outdir, "portfolio_backtest_trades.csv"), index=False, encoding="utf-8-sig")
     monitor.to_csv(os.path.join(outdir, "portfolio_backtest_daily_monitor.csv"), index=False, encoding="utf-8-sig")
     equity.to_csv(os.path.join(outdir, "portfolio_equity_curve.csv"), index=False, encoding="utf-8-sig")
@@ -881,6 +883,7 @@ def run_portfolio_regime_daily(
     action_recent_days: int = 10,
     action_start: Optional[str] = None,
     action_end: Optional[str] = None,
+    save_signal_panel: bool = False,
 ):
     os.makedirs(outdir, exist_ok=True)
     cfg = merge_config(load_config(cfg_path), cfg_overrides)
@@ -949,7 +952,8 @@ def run_portfolio_regime_daily(
     regime_df.to_csv(os.path.join(outdir, "portfolio_daily_regime.csv"), index=False, encoding="utf-8-sig")
     actions_df.to_csv(os.path.join(outdir, "portfolio_daily_actions.csv"), index=False, encoding="utf-8-sig")
     history_df.to_csv(os.path.join(outdir, "portfolio_action_history.csv"), index=False, encoding="utf-8-sig")
-    panel_out.to_csv(os.path.join(outdir, "portfolio_signal_panel.csv"), index=False, encoding="utf-8-sig")
+    if save_signal_panel:
+        panel_out.to_csv(os.path.join(outdir, "portfolio_signal_panel.csv"), index=False, encoding="utf-8-sig")
     trades.to_csv(os.path.join(outdir, "portfolio_backtest_trades.csv"), index=False, encoding="utf-8-sig")
     monitor.to_csv(os.path.join(outdir, "portfolio_backtest_daily_monitor.csv"), index=False, encoding="utf-8-sig")
     equity.to_csv(os.path.join(outdir, "portfolio_equity_curve.csv"), index=False, encoding="utf-8-sig")

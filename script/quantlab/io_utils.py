@@ -33,6 +33,13 @@ def load_market_csv_multi(paths: List[str]) -> pd.DataFrame:
 
 def ensure_dir(p: str): os.makedirs(p, exist_ok=True)
 
+def _filter_by_predicted_return(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty or "predicted_return" not in df.columns:
+        return df
+    df = df.copy()
+    pred_ret = pd.to_numeric(df["predicted_return"], errors="coerce")
+    return df[pred_ret > 0.1].copy()
+
 def save_outputs(signals_daily: pd.DataFrame,
                  trades_ledger: pd.DataFrame,
                  strategy_summary: pd.DataFrame,
@@ -45,10 +52,12 @@ def save_outputs(signals_daily: pd.DataFrame,
     ensure_dir(outdir)
     if save_signals and signals_daily is not None and not signals_daily.empty:
         signals_daily.to_csv(os.path.join(outdir, "signals_daily.csv"), index=False, encoding='utf-8-sig')
+    trades_ledger = _filter_by_predicted_return(trades_ledger)
     if save_trades and trades_ledger is not None and not trades_ledger.empty:
         trades_ledger.to_csv(os.path.join(outdir, "trades_ledger.csv"), index=False, encoding='utf-8-sig')
     if save_summary and strategy_summary is not None and not strategy_summary.empty:
         strategy_summary.to_csv(os.path.join(outdir, "strategy_summary.csv"), index=False, encoding='utf-8-sig')
+    candidates_today = _filter_by_predicted_return(candidates_today)
     if save_candidates and candidates_today is not None and not candidates_today.empty:
         last_day = pd.to_datetime(candidates_today['date'].max()).strftime("%Y%m%d")
         candidates_today.to_csv(os.path.join(outdir, f"candidates_{last_day}.csv"), index=False, encoding='utf-8-sig')

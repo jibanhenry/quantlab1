@@ -1,0 +1,9 @@
+output/
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+script.zip
+script/quantlab/model_outputs_v2/
+script/quantupdown/gru_output/
+script/quantupdown/pattern_output/

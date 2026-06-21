@@ -27,10 +27,10 @@ def _normalize_code(code) -> str:
 
 def _baostock_symbol(code: str) -> str:
     code = _normalize_code(code)
+    if code.startswith(("4", "8", "920")):
+        return f"bj.{code}"
     if code.startswith(("5", "6", "9")):
         return f"sh.{code}"
-    if code.startswith(("4", "8")):
-        return f"bj.{code}"
     return f"sz.{code}"
 
 
