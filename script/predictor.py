@@ -75,7 +75,12 @@ def _infer_window_days_from_features(feature_cols: List[str]) -> int:
                 pass
     return max_n if max_n > 0 else 7
 
-def _make_dayN_windows_one_series(df: pd.DataFrame, date_col: str, window_days: int) -> pd.DataFrame:
+def _make_dayN_windows_one_series(
+    df: pd.DataFrame,
+    date_col: str,
+    window_days: int,
+    latest_only: bool = False,
+) -> pd.DataFrame:
     """
     仅构造 day1..dayN 的扁平特征（不生成 label）。
     day1 = t-(N-1), ..., dayN = t0
@@ -93,7 +98,8 @@ def _make_dayN_windows_one_series(df: pd.DataFrame, date_col: str, window_days: 
         return pd.DataFrame(columns=["event_date"])
 
     recs = []
-    for anchor in range(window_days - 1, last_anchor + 1):
+    anchors = [last_anchor] if latest_only else range(window_days - 1, last_anchor + 1)
+    for anchor in anchors:
         start = anchor - (window_days - 1)
         end = anchor + 1
         feat = {"event_date": df.loc[anchor, date_col]}
@@ -108,7 +114,8 @@ def _make_dayN_windows_one_series(df: pd.DataFrame, date_col: str, window_days: 
 def _windows_from_daily_for_features(
     daily_df: pd.DataFrame,
     feature_cols: List[str],
-    show_progress: bool = True
+    show_progress: bool = True,
+    latest_only: bool = False,
 ) -> pd.DataFrame:
     """
     从 daily 构造 day1..dayN 特征，并与 feature_cols 对齐。
@@ -120,17 +127,17 @@ def _windows_from_daily_for_features(
     if "code" in daily_df.columns:
         daily_df["code"] = daily_df["code"].astype(str)
         parts = []
-        codes = list(daily_df["code"].unique())
-        pbar = _pbar(total=len(codes),
+        grouped = daily_df.groupby("code", sort=False)
+        pbar = _pbar(total=grouped.ngroups,
                      desc=f"生成 day1..day{window_days} 特征",
                      disable=not show_progress,
                      unit="stock")
-        for code in codes:
-            g = daily_df[daily_df["code"] == code].copy()
+        for code, g in grouped:
+            g = g.copy()
             if g.empty:
                 pbar.update(1)
                 continue
-            w = _make_dayN_windows_one_series(g, date_col, window_days)
+            w = _make_dayN_windows_one_series(g, date_col, window_days, latest_only=latest_only)
             if not w.empty:
                 w.insert(0, "code", str(code))
                 parts.append(w)
@@ -143,7 +150,7 @@ def _windows_from_daily_for_features(
         n = len(g)
         step = max(1, n // 100)
         pbar = _pbar(total=n, desc=f"生成 day1..day{window_days} 特征", disable=not show_progress, unit="row")
-        w = _make_dayN_windows_one_series(g, date_col, window_days)
+        w = _make_dayN_windows_one_series(g, date_col, window_days, latest_only=latest_only)
         for i in range(0, n, step):
             pbar.update(min(step, n - i))
         pbar.close()
@@ -200,10 +207,10 @@ def _predict_proba(payload: dict, X_feat: pd.DataFrame) -> np.ndarray:
     else:
         raise ValueError(f"未知模型类型：{mtype}")
 
-def predict_windows(daily_df: pd.DataFrame, payload: dict) -> pd.DataFrame:
+def predict_windows(daily_df: pd.DataFrame, payload: dict, latest_only: bool = False) -> pd.DataFrame:
     """从日线生成窗口特征 -> 预测概率 -> 产出 (code?, event_date, y_prob, y_pred)"""
     feats = payload["feature_cols"]
-    win = _windows_from_daily_for_features(daily_df, feats, show_progress=True)
+    win = _windows_from_daily_for_features(daily_df, feats, show_progress=True, latest_only=latest_only)
     if win.empty:
         return pd.DataFrame(columns=(["code"] if "code" in daily_df.columns else []) + ["event_date", "y_prob", "y_pred"])
     X = win[feats]
